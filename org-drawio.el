@@ -112,13 +112,13 @@
   :type 'boolean)
 
 (defcustom org-drawio-dir-regex
-  "\"\\([\u4e00-\u9fa5:~ \\/a-z_\s0-9\\.-]+\\)\""
-  "Define regex of directry. Currently support Chinese charaters."
+  "\"\\([^\"]+\\)\""
+  "Define regex of directory: anything in double quotes."
   :type 'string)
 
 (defcustom org-drawio-file-regex
-  "\"\\([\u4e00-\u9fa5:~ \\/a-z_\s0-9\\.-]+\\)\""
-  "Define regex of file. Currently support Chinese charaters."
+  "\"\\([^\"]+\\)\""
+  "Define regex of file: anything in double quotes."
   :type 'string)
 
 (defun org-drawio-keyword-value-input-dir (string)
@@ -179,6 +179,15 @@
                   (setq plist (append plist (funcall fn str)))))
         plist))))
 
+(defun org-drawio--keyword-plist ()
+  "Return the \"#+drawio:\" keyword's values at point, or signal an error.
+Like `org-drawio-keyword-string-to-plist', but with a `user-error'
+when there's no such keyword on this line, or it has no file."
+  (let ((plist (org-drawio-keyword-string-to-plist)))
+    (unless (plist-get plist :input)
+      (user-error "No #+drawio: \"FILE\" keyword on this line (quote the file name)"))
+    plist))
+
 (defun org-drawio-new-if-not-exist (dir file)
   "If a FILE or DIR not exsit, create an empty drawio diagram."
   (let ((path (concat dir "/" file)))
@@ -205,7 +214,7 @@
   "Convert .drawio file to .svg file, and insert svg to orgmode."
   (interactive)
   (save-excursion
-    (let* ((keyword-plist (org-drawio-keyword-string-to-plist))
+    (let* ((keyword-plist (org-drawio--keyword-plist))
            (dio-input-dir (or (plist-get keyword-plist :input-dir)
                               org-drawio-input-dir))
            (dio-input (file-name-with-extension
@@ -273,7 +282,7 @@
 (defun org-drawio-open ()
   "Open .drawio file in current line of #+drawio keyword."
   (interactive)
-  (let* ((keyword-plist (org-drawio-keyword-string-to-plist))
+  (let* ((keyword-plist (org-drawio--keyword-plist))
          (dio-input (file-name-with-extension
                      (plist-get keyword-plist :input) "drawio"))
          (dio-input-dir (or (plist-get keyword-plist :input-dir)
