@@ -1,4 +1,4 @@
-;;; org-drawio.el --- Convert and include drawio image to orgmode
+;;; org-drawio.el --- Convert and include drawio image to orgmode  -*- lexical-binding: t; -*-
 
 ;; Copyright (c) 2024 Kimi Ma <kimi.im@outlook.com>
 
@@ -174,7 +174,7 @@
                      (org-element-property :key (org-element-at-point)))
         ;; #+drawio: keyword exists.
         ;; Further checking the value
-        (when-let ((str (org-element-property :value (org-element-at-point))))
+        (when-let* ((str (org-element-property :value (org-element-at-point))))
           (dolist (fn org-drawio-keyword-value-functions) plist
                   (setq plist (append plist (funcall fn str)))))
         plist))))
@@ -229,15 +229,20 @@
                 (make-directory dio-output-dir)))
            (script (format "%s -x %s%s/%s -p %s -o %s/%s >/dev/null 2>&1 && \
 %s %s/%s %s/%s >/dev/null 2>&1"
-                           (file-truename
-                            (executable-find (or org-drawio-command-drawio "draw.io")))
+                           ;; Quote the commands too: e.g. draw.io's default
+                           ;; location on Windows, "C:/Program Files/...",
+                           ;; has a space in it.
+                           (shell-quote-argument
+                            (file-truename
+                             (executable-find (or org-drawio-command-drawio "draw.io"))))
                            (if org-drawio-crop "--crop " "")
                            (shell-quote-argument dio-input-dir)
                            (shell-quote-argument dio-input) dio-page
                            (shell-quote-argument dio-output-dir)
                            (shell-quote-argument dio-output-pdf)
-                           (or org-drawio-command-pdf2svg
-                               "pdf2svg")
+                           (shell-quote-argument
+                            (or org-drawio-command-pdf2svg
+                                "pdf2svg"))
                            (shell-quote-argument dio-output-dir)
                            (shell-quote-argument dio-output-pdf)
                            (shell-quote-argument dio-output-dir)
