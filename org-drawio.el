@@ -236,8 +236,14 @@ when there's no such keyword on this line, or it has no file."
            ;; create output dir if non exist
            (_ (when (not (file-exists-p dio-output-dir))
                 (make-directory dio-output-dir)))
-           (script (format "%s -x %s%s/%s -p %s -o %s/%s >/dev/null 2>&1 && \
-%s %s/%s %s/%s >/dev/null 2>&1"
+           ;; Pages are 0-based here (and in output file names), but
+           ;; draw.io's -p is 1-based since v27.0.2, and newer versions
+           ;; reject 0 [jgraph/drawio-desktop#2319].
+           (dio-cli-page (number-to-string
+                          (1+ (string-to-number dio-page))))
+           ;; Keep the commands' output, to report why an export failed.
+           (script (format "%s -x %s%s/%s -p %s -o %s/%s 2>&1 && \
+%s %s/%s %s/%s 2>&1"
                            ;; Quote the commands too: e.g. draw.io's default
                            ;; location on Windows, "C:/Program Files/...",
                            ;; has a space in it.
@@ -246,7 +252,7 @@ when there's no such keyword on this line, or it has no file."
                              (executable-find (or org-drawio-command-drawio "draw.io"))))
                            (if org-drawio-crop "--crop " "")
                            (shell-quote-argument dio-input-dir)
-                           (shell-quote-argument dio-input) dio-page
+                           (shell-quote-argument dio-input) dio-cli-page
                            (shell-quote-argument dio-output-dir)
                            (shell-quote-argument dio-output-pdf)
                            (shell-quote-argument
@@ -264,15 +270,37 @@ when there's no such keyword on this line, or it has no file."
         (while (string-prefix-p "#+" (org-current-line-string))
           (forward-line)))
       ;; convert from drawio to svg asynchronously, thanks to twiddling
-      (let ((process (start-process-shell-command "org-drawio" nil script)))
+      (let* ((org-buffer (current-buffer))
+             (pdf (expand-file-name dio-output-pdf dio-output-dir))
+             (output (get-buffer-create " *org-drawio*"))
+             (process (progn
+                        (with-current-buffer output (erase-buffer))
+                        (start-process-shell-command
+                         "org-drawio" output script))))
         (set-process-sentinel
-         process `(lambda (process event)
-                    (message event)
-                    (when (string-match-p "finished" event)
-                      ;; trash pdf file
-                      (delete-file ,(concat dio-output-dir "/" dio-output-pdf) t)
-                      ;; refresh image
-                      (org-redisplay-inline-images)))))
+         process
+         (lambda (process _event)
+           (when (memq (process-status process) '(exit signal))
+             (if (and (eq (process-status process) 'exit)
+                      (zerop (process-exit-status process)))
+                 (progn
+                   ;; trash pdf file
+                   (when (file-exists-p pdf)
+                     (delete-file pdf t))
+                   ;; refresh image
+                   (when (buffer-live-p org-buffer)
+                     (with-current-buffer org-buffer
+                       (funcall (if (fboundp 'org-link-preview-refresh)
+                                    'org-link-preview-refresh ; Org 9.8+
+                                  'org-redisplay-inline-images))))
+                   (message "org-drawio: exported %s" dio-output-svg))
+               ;; Report the last thing the commands printed.
+               (message "org-drawio: export failed (exit %s): %s"
+                        (process-exit-status process)
+                        (with-current-buffer output
+                          (or (car (last (split-string (buffer-string)
+                                                       "\n" t "[ \t\r]+")))
+                              "no output"))))))))
       (when (string-prefix-p "[[" (org-current-line-string))
         ;; when it is image link
         (kill-whole-line 0))
